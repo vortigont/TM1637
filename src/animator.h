@@ -5,9 +5,35 @@
 #include "type_traits.h"
 #include "mI2C.h"
 
+static constexpr uint8_t ascii[128] =				// Массив изменен, добавлены все буквы латиницы
+{
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x22, 0x00, 0x6D, 0x63, 0x00, 0x20,
+    0x39, 0x0F, 0x61, 0x00, 0x10, 0x40, 0x80, 0x52, 0x3F, 0x06,
+    0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F, 0x00, 0x00,
+    0x00, 0x48, 0x00, 0x53, 0x00, 0x77, 0x7f, 0x39, 0x3f, 0x79,
+    0x71, 0x3D, 0x76, 0x30, 0x1E, 0x72, 0x38, 0x55, 0x37, 0x3F,
+    0x73, 0x67, 0x50, 0x6D, 0x78, 0x3E, 0x1C, 0x6A, 0x1D, 0x6E,
+    0x5B, 0x39, 0x64, 0x00, 0x0F, 0x08, 0x20, 0x5f, 0x7C, 0x58,
+    0x5E, 0x7b, 0x71, 0x3D, 0x74, 0x04, 0x0e, 0x72, 0x38, 0x55,
+    0x54, 0x5C, 0x73, 0x67, 0x50, 0x6D, 0x78, 0x3E, 0x1C, 0x6A,
+    0x1D, 0x6E, 0x5B, 0x39, 0x30, 0x0F, 0x40, 0x00,
+};
+
+enum class Animation
+{
+    NONE,
+    BLINK,
+    FADE_OUT,
+    FADE_IN,
+    SCROLL_LEFT
+};
 
 class Animator
 {
+
     struct Tasker
     {
         using duration_type = uint32_t;
@@ -42,7 +68,7 @@ class Animator
         READ_KEY_SCAN_DATA              = 0x42,
         WRITE_DATA_TO_DISPLAY_REGISTER  = 0x40,
         NORMAL_MODE                     = 0x40,
-        TESTING_MODE                    = 0x48
+        TEST_MODE                       = 0x48
     };
 
     enum class AddressCommand_e : uint8_t
@@ -68,15 +94,6 @@ class Animator
         PULSE_WIDTH_14_16,
         DISPLAY_OFF                     = 0x80,
         DISPLAY_ON                      = PULSE_WIDTH_1_16
-    };
-
-    enum class Animation
-    {
-        NONE,
-        BLINK,
-        FADE_OUT,
-        FADE_IN,
-        SCROLL_LEFT
     };
 
 public:
@@ -131,18 +148,17 @@ public:
         currentAnimation = Animation::FADE_IN;
     }
 
-    void scrollLeft(Tasker::duration_type delay)
+    void scrollLeft(Tasker::duration_type delay, byte k=1)  // Добавил возможность выставлять свой индекс (отображение нескольких цифр сразу)
     {
         if (currentAnimation == Animation::SCROLL_LEFT) {
             if (tasker.check()) {
-                static unsigned int index = 0;
                 if (index > buffer_.length()) {
                     currentAnimation = Animation::NONE;
                     index = 0;
                     return;
                 }
                 String s(buffer_.substring(index, buffer_.length()));
-                ++index;
+                index += k;
                 for (size_t counter = s.length(); counter < totalDigits_; ++counter)
                     s.concat(static_cast<char>(0x00));
                 sendToDisplay<DataCommand_e::AUTOMATIC_ADDRESS_ADDING, AddressCommand_e::C0H>(
@@ -167,7 +183,7 @@ public:
     }
 
     void reset(const String& value) {
-        buffer_ = "";
+        buffer_.clear();
         for (decltype(value.length()) counter{}; counter < value.length(); ++counter) {
             auto d = toDisplayDigit(value[counter]);
             if (d == 0x80u && buffer_.length() > 0) {
@@ -178,9 +194,29 @@ public:
         resetAnimation();
     }
 
+    /**
+     * @brief concatenate currently animated string with additional content
+     * no nothing is animating currently, then reset() is called instead
+     */
+    void concat(const String& value){
+        if (!index){
+            reset(value);
+        }
+
+        buffer_.reserve(value.length());    // expand buffer
+
+        for (decltype(value.length()) counter{}; counter < value.length(); ++counter) {
+            auto d = toDisplayDigit(value[counter]);
+            if (d == 0x80u && buffer_.length() > 0) {
+                buffer_[buffer_.length() - 1] |= static_cast<char>(0x80u);
+            } else
+                buffer_.concat(static_cast<char>(d));
+        }
+    }
+
     void clear()
     {
-        buffer_ = "";
+        buffer_.clear();
         for (size_t counter{}; counter < totalDigits_; ++counter)
             buffer_.concat(static_cast<char>(0x00u));
         refresh();
@@ -261,30 +297,16 @@ private:
         mi2C_.endTransmission();
     }
 
-    String              buffer_ = "";
+    String              buffer_;
+    // index position in animated string
+    unsigned            index{0};
     MI2C                mi2C_;
     DisplayControl_e    brightness_ = DisplayControl_e::DISPLAY_ON;
-    uint8_t             dp_;
-    uint8_t             colon_;
-    const uint8_t       totalDigits_;
+    uint8_t             dp_{0};
+    uint8_t             colon_{0};
+    const uint8_t		totalDigits_;
     Tasker              tasker;
     Animation           currentAnimation = Animation::NONE;
-    const uint8_t ascii[128] =
-    {
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x22, 0x00, 0x6D, 0x00, 0x00, 0x20,
-        0x39, 0x0F, 0x00, 0x00, 0x10, 0x40, 0x80, 0x52, 0x3F, 0x06,
-        0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F, 0x00, 0x00,
-        0x00, 0x48, 0x00, 0x53, 0x00, 0x77, 0x7C, 0x39, 0x5E, 0x79,
-        0x71, 0x3D, 0x76, 0x30, 0x1E, 0x00, 0x38, 0x00, 0x54, 0x3F,
-        0x73, 0x67, 0x50, 0x6D, 0x78, 0x3E, 0x00, 0x00, 0x00, 0x6E,
-        0x5B, 0x39, 0x64, 0x00, 0x0F, 0x08, 0x20, 0x77, 0x7C, 0x58,
-        0x5E, 0x79, 0x71, 0x3D, 0x74, 0x04, 0x1E, 0x00, 0x38, 0x00,
-        0x54, 0x5C, 0x73, 0x67, 0x50, 0x6D, 0x78, 0x3E, 0x00, 0x00,
-        0x00, 0x6E, 0x5B, 0x39, 0x30, 0x0F, 0x40, 0x00,
-    };
 };
 
 #endif //TM1637_ANIMATOR_H

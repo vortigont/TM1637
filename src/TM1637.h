@@ -39,8 +39,8 @@ class TM1637
 public:
     static constexpr uint8_t TOTAL_DIGITS = 4;
 
-    TM1637(uint8_t clkPin, uint8_t dataPin) noexcept: animator_(clkPin, dataPin, TOTAL_DIGITS)
-    {};
+    TM1637(uint8_t clkPin, uint8_t dataPin) noexcept: animator_(clkPin, dataPin, TOTAL_DIGITS) {};
+
     TM1637(const TM1637&) = delete;
     TM1637& operator=(const TM1637&) = delete;
     ~TM1637() = default;
@@ -52,25 +52,18 @@ public:
     inline void init() { begin(); }
     inline Animator* refresh() { animator_.refresh(); return &animator_; }
 
-    template <typename T>
-    typename type_traits::enable_if<
-        type_traits::is_string<T>::value ||
-        type_traits::is_floating_point<T>::value ||
-        type_traits::is_integral<T>::value,
-        Animator*>::type
-    display(const T value, bool overflow = true, bool pad = false, uint8_t offset = 0)
+    Animator* display(const String& value, bool overflow = true, bool pad = false, uint8_t offset = 0)
     {
-        String temp = stringer<T>(value);
-        if (temp == cache_)
+        if (value == cache_)
             return &animator_;
-        cache_ = temp;
+        cache_ = value;
         String cache;
-        cache = "";
+
         for (decltype(offset) counter{}; counter < offset; ++counter)
             cache.concat(static_cast<char>(0x00));
-        cache.concat(temp);
+        cache.concat(value);
         if (pad)
-            for (size_t counter = cache.length(); counter < animator_.totalDigits_; ++counter)
+            for (auto counter = cache.length(); counter < animator_.totalDigits_; ++counter)
                 cache.concat(static_cast<char>('O'));
         if (!overflow)
             cache.substring(0, animator_.totalDigits_);
@@ -81,8 +74,8 @@ public:
 
     Animator* displayRawBytes(const uint8_t* buffer, size_t size)
     {
-        cache_ = "";
-        animator_.buffer_ = "";
+        cache_.clear();
+        animator_.buffer_.clear();
         for (decltype(size) counter{}; counter < size; ++counter)
             animator_.buffer_.concat(static_cast<char>(buffer[counter]));
         animator_.refresh();
@@ -91,14 +84,23 @@ public:
 
     void offMode() const noexcept { animator_.off(); };
     void onMode() const noexcept { animator_.on(animator_.brightness_); };
-    inline void colonOff() noexcept { animator_.colon_ = false; };
-    inline void colonOn() noexcept { animator_.colon_ = true; };
-    inline Animator* switchColon() noexcept { animator_.colon_ = !animator_.colon_; return &animator_; };
+    inline void colonOff() noexcept { animator_.colon_ = 0; };
+    inline void colonOn() noexcept { animator_.colon_ = 0xff; };
+    inline Animator* switchColon() noexcept { animator_.colon_ ? colonOff() : colonOn(); return &animator_; };
     void clearScreen() noexcept { animator_.clear(); animator_.refresh(); };
     inline void setDp(uint8_t value) noexcept { animator_.dp_ = value; }
     inline uint8_t getBrightness() const noexcept { return static_cast<uint8_t>(animator_.brightness_); }
     void changeBrightness(uint8_t value) noexcept { setBrightness(value);};
     void setBrightness(uint8_t value) noexcept { animator_.brightness_ = Animator::fetchControl(value); };
+
+    /**
+     * @brief Get current Animation type
+     * 
+     * @return Animation 
+     */
+    Animation getAnimation() const { return animator_.currentAnimation; }
+
+    Animator* getAnimator(){ return &animator_; }
 
 private:
     template <typename T>
@@ -116,12 +118,13 @@ private:
     template <typename T>
     typename type_traits::enable_if<type_traits::is_floating_point<T>::value, String>::type stringer(T value)
     {
-        return String(value, (unsigned int)TOTAL_DIGITS);
+        return String(value, TOTAL_DIGITS);
     }
 
 
+
     Animator                animator_;
-    String                  cache_ = "";
+    String                  cache_;
 };
 
 #endif //TM1637_TM1637_H
