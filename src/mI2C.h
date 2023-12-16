@@ -4,7 +4,9 @@
 #include <Arduino.h>
 
 // Put a longer delay in case your TM1637 is having issues with timing due to onboard capacitors
-#define TM1637_DELAY 0
+#ifndef TM1637_DELAY
+#define TM1637_DELAY 2
+#endif  //TM1637_DELAY
 
 class MI2C
 {
