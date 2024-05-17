@@ -18,11 +18,5 @@
     "repository": {
         "type": "git",
         "url": "https://github.com/AKJ7/TM1637.git"
-    },
-    "dependencies":
-    [
-         {"owner": "vortigont",
-          "name": "LinkedList",
-          "version": "https://github.com/vortigont/LinkedList"}
-    ]
+    }
 }
